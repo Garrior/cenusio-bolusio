@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   collect:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.PRICE_SCRAPER_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 330
     env:
       ALLEGRO_CLIENT_ID: ${{ secrets.ALLEGRO_CLIENT_ID }}
@@ -32,11 +32,12 @@ jobs:
       - name: Collect prices
         run: python scraper.py
       - name: Commit price history
+        shell: bash
         run: |
-          if [ -n "$(git status --porcelain data/catalog.json data/price_history.jsonl)" ]; then
+          if [ -n "$(git status --porcelain data/)" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add data/catalog.json data/price_history.jsonl
+            git add -A -- data/
             git commit -m "chore: update game catalog and prices"
             git push
           fi

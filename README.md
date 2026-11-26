@@ -19,6 +19,14 @@ Create an Allegro application, then add repository Actions secrets named `ALLEGR
 
 The workflow runs daily at 06:00 UTC (07:00/08:00 in Poland depending on daylight saving time) and can also be started manually. In repository settings, GitHub Actions must have **Read and write permissions** so it can commit `data/catalog.json` and `data/price_history.jsonl`.
 
+### Planszeo access from GitHub-hosted runners
+
+GitHub-hosted runners received HTTP 403 responses from Planszeo during the initial catalog crawl. If Planszeo is accessible from your home network, register a self-hosted Actions runner on a machine there and keep it online for scheduled runs. GitHub's **Settings → Actions → Runners → New self-hosted runner** page provides the machine-specific install and registration steps. Then add an Actions repository variable named `PRICE_SCRAPER_RUNNER` with value `self-hosted`; leaving it unset keeps using `ubuntu-latest`.
+
+This repository is public. Its workflow currently runs only on a schedule or manual dispatch and has no pull request trigger. Keep it that way if you use a self-hosted runner; GitHub warns that untrusted pull request workflows can execute code on self-hosted machines.
+
+If the runner is offline, the job waits for an available matching runner. The scraper now stops catalog discovery on HTTP 403/429 and fails clearly if it has no previously saved catalog, instead of saving an empty catalog and failing later in the commit step.
+
 ## Matching and limitations
 
 Amazon and Allegro results are matched by title, with accessory-like titles filtered out. This is deliberately a rough match and can mix editions or miss translated titles. The catalog is limited to what Planszeo lists as board games and expansions. If a source requires JavaScript, blocks a request, or changes its page layout, that source may produce no observation for the affected title; the run logs the issue and continues where possible.

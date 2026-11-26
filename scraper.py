@@ -206,6 +206,7 @@ def discover_games(catalog: dict[str, Any]) -> int:
     found: dict[str, dict[str, str]] = {game["id"]: game for game in catalog["games"]}
     pages_to_scan = range(cursor, cursor + max(1, DISCOVERY_PAGES_PER_RUN))
     pages_scanned = 0
+    blocked_error: str | None = None
 
     for page_number in pages_to_scan:
         if total and page_number > total:
@@ -218,6 +219,9 @@ def discover_games(catalog: dict[str, Any]) -> int:
                 found[game["id"]] = game
         except (requests.RequestException, ValueError) as error:
             LOG.warning("Catalog page %d failed: %s", page_number, error)
+            if isinstance(error, requests.HTTPError) and error.response is not None and error.response.status_code in {403, 429}:
+                blocked_error = f"HTTP {error.response.status_code}"
+                break
         time.sleep(REQUEST_DELAY_SECONDS)
 
     if total:
@@ -228,6 +232,11 @@ def discover_games(catalog: dict[str, Any]) -> int:
     catalog["games"] = sorted(found.values(), key=lambda game: (normalise(game["name"]), game["id"]))
     LOG.info("Scanned %d catalog pages; catalog contains %d titles (page %d of %d next)",
              pages_scanned, len(catalog["games"]), catalog.get("discovery_cursor", 1), total)
+    if not catalog["games"]:
+        detail = f" Planszeo returned {blocked_error}." if blocked_error else ""
+        raise RuntimeError(f"No game titles are available; refusing to save an empty catalog.{detail}")
+    if blocked_error:
+        LOG.warning("Planszeo discovery stopped after %s; continuing with the existing catalog", blocked_error)
     return pages_scanned
 
 
@@ -481,6 +490,6 @@ def collect() -> int:
 if __name__ == "__main__":
     try:
         sys.exit(collect())
-    except (OSError, json.JSONDecodeError, ValueError) as error:
+    except (OSError, json.JSONDecodeError, ValueError, RuntimeError) as error:
         LOG.error("Catalog, configuration, or storage error: %s", error)
         sys.exit(1)
