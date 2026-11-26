@@ -1,36 +1,24 @@
 # Board game price history (Poland)
 
-A small daily price tracker for board games and expansions sold in Poland. It stores one JSON Lines observation per game and source in `data/price_history.jsonl`, so the history stays append-only and can be analyzed later.
+This project discovers board games and expansions automatically from Planszeo. It keeps an alphabetical catalog in `data/catalog.json` and appends price observations to `data/price_history.jsonl`. You do not need to maintain a game list.
 
-## Setup
+## What the daily run does
 
-1. Add games and their known product page URLs to [`games.json`](games.json). Use a stable `id` for each game. The first version accepts Planszeo product URLs and other product pages with Schema.org `Product` / `Offer` JSON-LD or standard `itemprop` price metadata.
-2. Add a `sources` list for each game. For example:
+- Crawls 100 Planszeo catalog pages per run and adds discovered titles. The catalog is sorted alphabetically in the repo.
+- Checks a rotating batch of 2,500 catalog titles for prices. For each Planszeo page, it keeps the three cheapest distinct shops; Amazon.pl and Allegro each contribute their closest matching listing.
+- Uses Allegro's official API if credentials are configured. Without them, the scraper tries one ordinary public search page; if Allegro returns an access block, it skips further Allegro page requests for that run.
+- Appends observations as JSON Lines and commits the catalog/history to the default branch.
 
-   ```json
-   {
-     "id": "wingspan",
-     "name": "Wingspan",
-     "kind": "base_game",
-     "sources": [
-       {"shop": "Planszeo", "url": "https://planszeo.pl/..."},
-       {"shop": "Local shop", "url": "https://shop.example/..."}
-     ]
-   }
-   ```
+Planszeo currently exposes about 1,441 catalog pages. At 100 pages per run, a complete first catalog pass takes about 15 daily runs. At 2,500 titles per run, a full price rotation is about two weeks for a catalog of roughly 36,000 titles. Each observation has its own date, game, shop, PLN amount, source URL, and availability when the source provides it. A full-market refresh for every one of tens of thousands of titles every day would need far more requests than this daily workflow can responsibly make.
 
-   `kind` should be `base_game` or `expansion`. Keeping product links explicit avoids matching similarly named accessories, RPGs, or TCG products.
-3. Enable Actions write access in the repository settings: **Settings → Actions → General → Workflow permissions → Read and write permissions**. The workflow commits updated history back to the default branch.
-4. Run **Daily board game prices → Run workflow** once to seed the history, then the scheduled run executes daily at 06:00 UTC (07:00/08:00 Poland time depending on daylight saving time).
+## Allegro API setup (optional)
 
-## Data format
+Create an Allegro application, then add repository Actions secrets named `ALLEGRO_CLIENT_ID` and `ALLEGRO_CLIENT_SECRET`. The workflow uses the client credentials flow and official offer search endpoint. Without these secrets, Allegro may return HTTP 403 to the public search page and no Allegro prices will be recorded.
 
-Each line in `data/price_history.jsonl` is an independent observation with `observed_at` in UTC, game identity, source/shop, price in PLN, availability (when published by the page), and URL. Missing or unparseable prices are logged as source errors in the Actions run; they are not written as zero prices.
+## Workflow setup
 
-## Source notes
+The workflow runs daily at 06:00 UTC (07:00/08:00 in Poland depending on daylight saving time) and can also be started manually. In repository settings, GitHub Actions must have **Read and write permissions** so it can commit `data/catalog.json` and `data/price_history.jsonl`.
 
-- **Planszeo / product pages:** pages are fetched politely (one request per URL, a delay between pages) and only structured product/offer metadata is read. Sites may block automation or change their markup. Pages that require JavaScript or a location check may not yield a price.
-- **Allegro:** use a specific offer URL only if its page exposes standard structured data. Prefer an official API integration if you need reliable live offers; this repository does not attempt to guess which search results represent the exact game. An API adapter can be added with Allegro app credentials and product/offer IDs.
-- **Amazon.pl:** intentionally not scraped. Amazon's published terms prohibit automated collection and reuse of product prices/listings without permission. Add it only through an Amazon-authorized data route and after reviewing that route's terms.
+## Matching and limitations
 
-The list in `games.json` starts empty. Price history becomes useful after you add the games you actually want to track and the first daily observations accumulate.
+Amazon and Allegro results are matched by title, with accessory-like titles filtered out. This is deliberately a rough match and can mix editions or miss translated titles. The catalog is limited to what Planszeo lists as board games and expansions. If a source requires JavaScript, blocks a request, or changes its page layout, that source may produce no observation for the affected title; the run logs the issue and continues where possible.
